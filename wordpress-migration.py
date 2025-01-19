@@ -15,9 +15,9 @@ import sys
 class WordPressMigrator:
     def __init__(self, source_url, dest_url, source_user, source_pass, dest_user, dest_pass):
         """
-        Inicializa o migrador com as credenciais dos sites
+        Initializes the migrator with site credentials
         """
-        # Configura logging detalhado
+        # Configure detailed logging
         logging.basicConfig(
             level=logging.DEBUG,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -28,14 +28,14 @@ class WordPressMigrator:
         )
         self.logger = logging.getLogger(__name__)
         
-        # Configura sessão para manter cookies e headers
+        # Configure session to maintain cookies and headers
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'WordPress-Migration-Tool/1.0',
             'Accept': 'application/json'
         })
         
-        # Remove trailing slashes e configura URLs
+        # Remove trailing slashes and configure URLs
         self.source_url = source_url.rstrip('/')
         self.dest_url = dest_url.rstrip('/')
         self.source_api = f"{self.source_url}/wp-json/wp/v2"
@@ -43,20 +43,20 @@ class WordPressMigrator:
         self.source_auth = HTTPBasicAuth(source_user, source_pass)
         self.dest_auth = HTTPBasicAuth(dest_user, dest_pass)
         
-        # Cache para URLs de imagens
+        # Cache for image URLs
         self.image_cache = {}
         
-        # Cria diretório temporário
+        # Create temporary directory
         self.temp_dir = Path('temp_images')
         self.temp_dir.mkdir(exist_ok=True)
         
-        # Flag para API Legacy
+        # Flag for Legacy API
         self.use_legacy_api = False
 
     def check_wordpress_version(self):
-        """Verifica a versão do WordPress e configurações do servidor"""
+        """Checks WordPress version and server settings"""
         try:
-            # Tenta acessar arquivo de versão do WordPress
+            # Try to access WordPress version file
             response = self.session.get(f"{self.source_url}/wp-includes/version.php")
             if response.status_code == 200:
                 version_match = re.search(r"\$wp_version\s*=\s*'([^']+)'", response.text)
@@ -64,29 +64,29 @@ class WordPressMigrator:
                     wp_version = version_match.group(1)
                     self.logger.info(f"WordPress version: {wp_version}")
             
-            # Verifica configurações do PHP
+            # Check PHP settings
             response = self.session.get(f"{self.source_url}/wp-admin/admin-ajax.php", 
                                      params={'action': 'php_info'})
             if response.status_code == 200:
-                self.logger.info("PHP info acessível")
+                self.logger.info("PHP info accessible")
                 
         except Exception as e:
-            self.logger.warning(f"Não foi possível verificar versão: {str(e)}")
+            self.logger.warning(f"Could not verify version: {str(e)}")
 
     def check_api_accessibility(self):
-        """Verifica se as APIs estão acessíveis e configuradas corretamente"""
-        self.logger.info("Verificando acessibilidade das APIs...")
+        """Checks if APIs are accessible and properly configured"""
+        self.logger.info("Checking API accessibility...")
 
-        # Verifica API de origem
+        # Check source API
         try:
-            # Testa endpoint base
+            # Test base endpoint
             response = self.session.get(f"{self.source_url}/wp-json")
             self.logger.debug(f"API Base Response: {response.text[:500]}")
             
             if response.status_code != 200:
-                raise Exception(f"API de origem não está acessível. Status: {response.status_code}")
+                raise Exception(f"Source API is not accessible. Status: {response.status_code}")
 
-            # Testa diferentes endpoints para diagnosticar o problema
+            # Test different endpoints to diagnose the problem
             endpoints = [
                 '/wp-json/wp/v2/posts',
                 '/wp-json/wp/v2/pages',
@@ -104,63 +104,63 @@ class WordPressMigrator:
                     self.logger.debug(f"Endpoint {endpoint} status: {response.status_code}")
                     self.logger.debug(f"Response: {response.text[:500]}")
                     
-                    # Verifica se há erro de autenticação
+                    # Check for authentication error
                     if response.status_code == 500:
                         response_data = response.json()
                         if response_data.get("code") == "incorrect_password":
-                            self.logger.error("Erro de autenticação: A senha informada está incorreta.")
-                            self.logger.error("Por favor, verifique o usuário e senha fornecidos.")
-                            sys.exit(1)  # Encerra o script com código de erro
+                            self.logger.error("Authentication error: The provided password is incorrect.")
+                            self.logger.error("Please verify the provided username and password.")
+                            sys.exit(1)  # Exit script with error code
                     
                 except Exception as e:
-                    self.logger.error(f"Erro no endpoint {endpoint}: {str(e)}")
+                    self.logger.error(f"Error in endpoint {endpoint}: {str(e)}")
 
-            # Tenta usar REST API Legacy se necessário
+            # Try using Legacy REST API if necessary
             if all(response.status_code == 500 for endpoint in endpoints):
-                self.logger.warning("Tentando usar REST API Legacy...")
+                self.logger.warning("Attempting to use Legacy REST API...")
                 response = self.session.get(
                     f"{self.source_url}/wp-json/posts",
                     auth=self.source_auth
                 )
                 if response.status_code == 200:
                     self.use_legacy_api = True
-                    self.logger.info("Usando REST API Legacy")
+                    self.logger.info("Using Legacy REST API")
 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Erro de conexão: {str(e)}")
-            raise Exception(f"Erro ao conectar com site de origem: {str(e)}")
+            self.logger.error(f"Connection error: {str(e)}")
+            raise Exception(f"Error connecting to source site: {str(e)}")
 
-        # Verifica configurações do servidor
+        # Check server settings
         self.check_wordpress_version()
         
-        self.logger.info("Verificação de APIs concluída!")
+        self.logger.info("API verification completed!")
 
     def get_all_posts(self, per_page=5):
-        """Obtém todos os posts do site de origem"""
+        """Retrieves all posts from the source site"""
         posts = []
         page = 1
         
-        self.logger.info("Iniciando coleta de posts...")
+        self.logger.info("Starting post collection...")
         
-        # Define o endpoint baseado no tipo de API
+        # Define endpoint based on API type
         api_endpoint = f"{self.source_url}/wp-json/posts" if self.use_legacy_api else f"{self.source_api}/posts"
         
         while True:
             try:
-                self.logger.debug(f"Buscando página {page} de posts...")
+                self.logger.debug(f"Fetching page {page} of posts...")
                 
-                # Parâmetros da requisição
+                # Request parameters
                 params = {
                     "page": page,
                     "per_page": per_page,
                     "status": "publish"
                 }
                 
-                # Adiciona campos específicos apenas para API v2
+                # Add specific fields only for API v2
                 if not self.use_legacy_api:
                     params["_fields"] = "id,title,content,excerpt,featured_media,categories,tags"
                 
-                # Faz a requisição com timeout aumentado
+                # Make request with increased timeout
                 response = self.session.get(
                     api_endpoint,
                     params=params,
@@ -168,7 +168,7 @@ class WordPressMigrator:
                     timeout=60
                 )
                 
-                # Log da resposta
+                # Log response
                 self.logger.debug(f"Status Code: {response.status_code}")
                 self.logger.debug(f"Headers: {dict(response.headers)}")
                 self.logger.debug(f"Response: {response.text[:500]}")
@@ -180,9 +180,9 @@ class WordPressMigrator:
                     break
                     
                 posts.extend(current_posts)
-                self.logger.info(f"Coletados {len(posts)} posts até agora...")
+                self.logger.info(f"Collected {len(posts)} posts so far...")
                 
-                # Verifica se há mais páginas
+                # Check if there are more pages
                 if self.use_legacy_api:
                     if len(current_posts) < per_page:
                         break
@@ -195,54 +195,54 @@ class WordPressMigrator:
                 time.sleep(2)
                 
             except Exception as e:
-                self.logger.error(f"Erro ao buscar página {page}: {str(e)}")
+                self.logger.error(f"Error fetching page {page}: {str(e)}")
                 self.logger.error(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
                 self.logger.error(f"Response body: {response.text[:1000] if 'response' in locals() else 'N/A'}")
                 raise
                 
-        self.logger.info(f"Total de {len(posts)} posts coletados.")
+        self.logger.info(f"Total of {len(posts)} posts collected.")
         return posts
 
     def migrate_all_posts(self):
-        """Migra todos os posts do site de origem para o site de destino, incluindo imagens"""
-        self.logger.info("Iniciando migração de posts...")
+        """Migrates all posts from source site to destination site, including images"""
+        self.logger.info("Starting post migration...")
         
-        # Obtém todos os posts do site de origem
+        # Get all posts from source site
         posts = self.get_all_posts()
         
-        # Itera sobre os posts e os envia para o site de destino
+        # Iterate over posts and send them to destination site
         for post in posts:
             try:
-                self.logger.info(f"Migrando post: {post.get('title', {}).get('rendered', 'Sem título')}")
+                self.logger.info(f"Migrating post: {post.get('title', {}).get('rendered', 'No title')}")
                 
-                # Prepara os dados do post para envio
+                # Prepare post data for sending
                 post_data = {
                     "title": post.get("title", {}).get("rendered", ""),
                     "content": post.get("content", {}).get("rendered", ""),
                     "excerpt": post.get("excerpt", {}).get("rendered", ""),
-                    "status": "publish",  # Define o status do post como "publicado"
+                    "status": "publish",  # Set post status as "published"
                     "categories": post.get("categories", []),
                     "tags": post.get("tags", [])
                 }
                 
-                # Verifica se o post tem uma imagem destacada
+                # Check if post has a featured image
                 featured_media_id = post.get("featured_media")
                 if featured_media_id:
-                    self.logger.info(f"Processando imagem destacada (ID: {featured_media_id})...")
+                    self.logger.info(f"Processing featured image (ID: {featured_media_id})...")
                     
-                    # Obtém os detalhes da imagem do site de origem
+                    # Get image details from source site
                     media_url = f"{self.source_api}/media/{featured_media_id}"
                     response = self.session.get(media_url, auth=self.source_auth)
                     if response.status_code == 200:
                         media_data = response.json()
                         image_url = media_data.get("source_url")
                         
-                        # Baixa a imagem
-                        self.logger.info(f"Baixando imagem: {image_url}")
+                        # Download image
+                        self.logger.info(f"Downloading image: {image_url}")
                         image_response = self.session.get(image_url, stream=True)
                         if image_response.status_code == 200:
-                            # Envia a imagem para o site de destino
-                            self.logger.info("Enviando imagem para o site de destino...")
+                            # Upload image to destination site
+                            self.logger.info("Uploading image to destination site...")
                             files = {'file': (os.path.basename(image_url), image_response.content)}
                             upload_response = self.session.post(
                                 f"{self.dest_api}/media",
@@ -253,16 +253,16 @@ class WordPressMigrator:
                             if upload_response.status_code == 201:
                                 new_media_id = upload_response.json().get("id")
                                 post_data["featured_media"] = new_media_id
-                                self.logger.info(f"Imagem enviada com sucesso! Novo ID: {new_media_id}")
+                                self.logger.info(f"Image uploaded successfully! New ID: {new_media_id}")
                             else:
-                                self.logger.error(f"Erro ao enviar imagem. Status: {upload_response.status_code}")
-                                self.logger.error(f"Resposta: {upload_response.text[:1000]}")
+                                self.logger.error(f"Error uploading image. Status: {upload_response.status_code}")
+                                self.logger.error(f"Response: {upload_response.text[:1000]}")
                         else:
-                            self.logger.error(f"Erro ao baixar imagem. Status: {image_response.status_code}")
+                            self.logger.error(f"Error downloading image. Status: {image_response.status_code}")
                     else:
-                        self.logger.error(f"Erro ao obter detalhes da imagem. Status: {response.status_code}")
+                        self.logger.error(f"Error getting image details. Status: {response.status_code}")
                 
-                # Envia o post para o site de destino
+                # Send post to destination site
                 response = self.session.post(
                     f"{self.dest_api}/posts",
                     json=post_data,
@@ -270,30 +270,30 @@ class WordPressMigrator:
                     timeout=60
                 )
                 
-                # Verifica se o post foi criado com sucesso
+                # Check if post was created successfully
                 if response.status_code == 201:
-                    self.logger.info(f"Post migrado com sucesso! ID: {response.json().get('id')}")
+                    self.logger.info(f"Post migrated successfully! ID: {response.json().get('id')}")
                 else:
-                    self.logger.error(f"Erro ao migrar post. Status: {response.status_code}")
-                    self.logger.error(f"Resposta: {response.text[:1000]}")
+                    self.logger.error(f"Error migrating post. Status: {response.status_code}")
+                    self.logger.error(f"Response: {response.text[:1000]}")
                     
             except Exception as e:
-                self.logger.error(f"Erro ao migrar post: {str(e)}")
+                self.logger.error(f"Error migrating post: {str(e)}")
                 raise
 
-        self.logger.info("Migração de posts concluída!")
+        self.logger.info("Post migration completed!")
 
-# Exemplo de uso
+# Usage example
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description='Migrador de posts WordPress')
-    parser.add_argument('--source-url', required=True, help='URL do site de origem')
-    parser.add_argument('--dest-url', required=True, help='URL do site de destino')
-    parser.add_argument('--source-user', required=True, help='Usuário do site de origem')
-    parser.add_argument('--source-pass', required=True, help='Senha do site de origem')
-    parser.add_argument('--dest-user', required=True, help='Usuário do site de destino')
-    parser.add_argument('--dest-pass', required=True, help='Senha do site de destino')
+    parser = argparse.ArgumentParser(description='WordPress Post Migrator')
+    parser.add_argument('--source-url', required=True, help='Source site URL')
+    parser.add_argument('--dest-url', required=True, help='Destination site URL')
+    parser.add_argument('--source-user', required=True, help='Source site username')
+    parser.add_argument('--source-pass', required=True, help='Source site password')
+    parser.add_argument('--dest-user', required=True, help='Destination site username')
+    parser.add_argument('--dest-pass', required=True, help='Destination site password')
     
     args = parser.parse_args()
     
@@ -307,12 +307,12 @@ if __name__ == "__main__":
             dest_pass=args.dest_pass
         )
         
-        # Verifica APIs antes de começar
+        # Check APIs before starting
         migrator.check_api_accessibility()
         
-        # Inicia a migração de posts
+        # Start post migration
         migrator.migrate_all_posts()
         
     except Exception as e:
-        print(f"\nErro durante a migração: {str(e)}")
+        print(f"\nError during migration: {str(e)}")
         sys.exit(1)
